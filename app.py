@@ -34,8 +34,14 @@ TIMEOUT = 15                          # give up on Supabase after 15 seconds
 
 mimetypes.add_type("application/manifest+json", ".webmanifest")   # so phones recognise the app manifest
 
-# static_url_path="" makes files in the static folder available at the top level (e.g. /icon-192.png)
-app = Flask(__name__, static_folder="static", static_url_path="")
+# Where the web page files live. Normally that's the "static" folder next to this file,
+# but if the files were uploaded loose beside app.py, use that folder instead.
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+FILE_DIR = os.path.join(BASE_DIR, "static") if os.path.isdir(os.path.join(BASE_DIR, "static")) else BASE_DIR
+# Only these files may be downloaded by visitors (so app.py itself is never shared)
+PUBLIC_FILES = {"index.html", "manifest.webmanifest", "icon-180.png", "icon-192.png", "icon-512.png"}
+
+app = Flask(__name__, static_folder=None)             # we serve the files ourselves, below
 app.secret_key = os.environ.get("SECRET_KEY", "change-me-for-local-testing-only")
 app.config.update(
     SESSION_COOKIE_HTTPONLY=True,                         # page scripts can't read the login cookie
@@ -157,7 +163,15 @@ def validate_reading(data):
 @app.get("/")
 def home():
     """Send the web page."""
-    return send_from_directory(app.static_folder, "index.html")
+    return send_from_directory(FILE_DIR, "index.html")
+
+
+@app.get("/<filename>")
+def public_file(filename):
+    """Send the app's icon and manifest files (and nothing else)."""
+    if filename not in PUBLIC_FILES:
+        return error("Not found.", 404)
+    return send_from_directory(FILE_DIR, filename)
 
 
 @app.get("/api/me")
@@ -268,4 +282,4 @@ def delete_reading(token, reading_id):
 # PART 6: RUN LOCALLY (on Render, gunicorn starts the app instead)
 # ---------------------------------------------------------------------
 if __name__ == "__main__":
-    app.run(port=5001)
+    app.run(port=5001)   # 5001, because on a Mac port 5000 is used by AirPlay
