@@ -1,0 +1,638 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<!-- viewport-fit=cover lets the page use the whole phone screen; the padding rules below keep content clear of notches -->
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Blood Pressure Diary</title>
+<!-- Settings that let the page be added to a phone's home screen and open like an app -->
+<meta name="theme-color" content="#0b5c7a">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="BP Diary">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" href="icon-192.png">
+<!-- A very readable font (designed for low-vision readers). If it can't load, the fallback list is used. -->
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&display=swap">
+
+<style>
+/* =====================================================================
+   1. STYLES
+   ===================================================================== */
+
+/* Colour "tokens": named colours defined once, reused everywhere.
+   Changing a value here changes it across the whole app. */
+:root {
+  --bg: #f3f6f8;          /* page background */
+  --card: #ffffff;        /* panels */
+  --ink: #14232e;         /* main text */
+  --muted: #4d6170;       /* secondary text */
+  --line: #cbd6de;        /* borders */
+  --brand: #0b5c7a;       /* buttons, active tab */
+  --brand-ink: #ffffff;   /* text on brand colour */
+  --sys: #b3261e;         /* systolic (top number) line */
+  --dia: #0b5c7a;         /* diastolic (bottom number) line */
+  --low: #6a4fb3;         /* category colours */
+  --ok: #1d7a3e;
+  --raised: #a15c00;
+  --high: #b3261e;
+
+  /* Keeps content clear of phone notches/bars */
+  box-sizing: border-box;
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+/* Dark mode colours, used automatically if the phone is set to dark */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0e171d; --card: #17242d; --ink: #eaf1f5; --muted: #9fb3c1; --line: #2e4150;
+    --brand: #5cc0e3; --brand-ink: #06222e; --sys: #ff8a80; --dia: #5cc0e3;
+    --low: #b9a6ff; --ok: #6fd48f; --raised: #ffb54d; --high: #ff8a80;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0e171d; --card: #17242d; --ink: #eaf1f5; --muted: #9fb3c1; --line: #2e4150;
+  --brand: #5cc0e3; --brand-ink: #06222e; --sys: #ff8a80; --dia: #5cc0e3;
+  --low: #b9a6ff; --ok: #6fd48f; --raised: #ffb54d; --high: #ff8a80;
+}
+
+html { height: 100%; scroll-padding-top: env(safe-area-inset-top, 0px); }
+body {
+  margin: 0; min-height: 100%;
+  background: var(--bg); color: var(--ink);
+  font-family: "Atkinson Hyperlegible", system-ui, -apple-system, "Segoe UI", Arial, sans-serif;
+  font-size: 20px;          /* deliberately large for easy reading */
+  line-height: 1.5;
+}
+.wrap { max-width: 720px; margin: 0 auto; padding: 16px; }
+h1 { font-size: 1.7rem; margin: 8px 0 4px; }
+h2 { font-size: 1.35rem; margin: 0 0 12px; }
+p.sub { margin: 0 0 16px; color: var(--muted); }
+
+/* Tab buttons along the top */
+nav { display: flex; gap: 8px; margin-bottom: 16px; }
+nav button {
+  flex: 1; font: inherit; font-weight: 700; padding: 14px 8px;
+  border: 2px solid var(--brand); border-radius: 12px;
+  background: transparent; color: var(--brand); cursor: pointer;
+}
+nav button[aria-selected="true"] { background: var(--brand); color: var(--brand-ink); }
+
+/* Each tab's content sits in a "panel". Only one is visible at a time. */
+.panel { display: none; background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 20px; }
+.panel.active { display: block; }
+
+/* Form layout */
+.row { display: flex; gap: 12px; flex-wrap: wrap; }
+.field { flex: 1 1 140px; margin-bottom: 16px; }
+label { display: block; font-weight: 700; margin-bottom: 4px; }
+.hint { font-weight: 400; color: var(--muted); font-size: 0.85rem; }
+input, textarea, select {
+  width: 100%; box-sizing: border-box; font: inherit; padding: 12px;
+  border: 2px solid var(--line); border-radius: 10px;
+  background: var(--bg); color: var(--ink);
+}
+input.big { font-size: 2rem; text-align: center; font-weight: 700; }
+button.primary {
+  width: 100%; font: inherit; font-weight: 700; font-size: 1.15rem; padding: 16px;
+  border: 0; border-radius: 12px; background: var(--brand); color: var(--brand-ink); cursor: pointer;
+}
+button.small {
+  font: inherit; padding: 8px 12px; border: 2px solid var(--line); border-radius: 8px;
+  background: transparent; color: var(--ink); cursor: pointer;
+}
+/* Clear keyboard/touch focus outline */
+:focus-visible { outline: 4px solid var(--brand); outline-offset: 2px; }
+
+.msg { min-height: 1.5em; margin: 12px 0 0; font-weight: 700; }
+.msg.error { color: var(--high); }
+.msg.good { color: var(--ok); }
+
+/* Summary boxes (averages) */
+.stats { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; }
+.stat { flex: 1 1 140px; border: 2px solid var(--line); border-radius: 12px; padding: 10px 14px; }
+.stat b { display: block; font-size: 1.6rem; }
+.stat span { color: var(--muted); font-size: 0.9rem; }
+
+/* History table; wrapper scrolls sideways on tiny screens instead of breaking the page */
+.scroll { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; }
+th, td { text-align: left; padding: 10px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { color: var(--muted); font-size: 0.9rem; }
+td.bp { font-weight: 700; font-size: 1.2rem; white-space: nowrap; }
+
+/* Category label. Uses a word as well as a colour so it works for colour-blind readers too */
+.tag { display: inline-block; font-weight: 700; padding: 2px 10px; border-radius: 99px; border: 2px solid currentColor; font-size: 0.85rem; }
+.tag.low { color: var(--low); } .tag.ok { color: var(--ok); }
+.tag.raised { color: var(--raised); } .tag.high { color: var(--high); }
+
+/* Chart */
+.chart-svg { width: 100%; height: auto; display: block; }
+.legend { display: flex; gap: 16px; flex-wrap: wrap; margin: 8px 0; }
+.empty { color: var(--muted); }
+footer { color: var(--muted); font-size: 0.85rem; margin: 16px 0 32px; }
+
+/* PRINTING: when "Print for doctor" is used, hide the buttons and form
+   and show the summary, chart and table together on paper. */
+@media print {
+  body { background: #fff; color: #000; font-size: 14px; }
+  nav, .noprint, footer.screen { display: none !important; }
+  .panel { display: none; border: 0; padding: 0; }
+  .panel.printable { display: block; }
+  .tag { border: 0; padding: 0; }
+}
+
+/* LOGIN CARD (same look as the panels) and the "hidden" rule used to switch screens */
+[hidden] { display: none !important; }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 20px; }
+.card .field { margin-bottom: 14px; }
+button.secondary {
+  width: 100%; font: inherit; font-weight: 700; font-size: 1.1rem; padding: 14px; margin-top: 10px;
+  border: 2px solid var(--brand); border-radius: 12px; background: transparent; color: var(--brand); cursor: pointer;
+}
+</style>
+</head>
+
+<body>
+<div class="wrap">
+  <h1>Blood Pressure Diary</h1>
+  <p class="sub">Record each reading, then show the history to your doctor.</p>
+  <p class="noprint"><button class="small" id="signout" type="button" hidden>Sign out</button></p>
+
+  <!-- LOGIN CARD: shown when nobody is signed in -->
+  <section class="card" id="login" hidden>
+    <h2>Sign in</h2>
+    <form id="login-form" novalidate>
+      <div class="field"><label for="email">Email</label>
+        <input id="email" type="email" autocomplete="email" inputmode="email"></div>
+      <div class="field"><label for="password">Password <span class="hint">(at least 6 characters)</span></label>
+        <input id="password" type="password" autocomplete="current-password"></div>
+      <button class="primary" type="submit">Sign in</button>
+      <button class="secondary" type="button" id="signup-btn">Create a new account</button>
+      <p class="msg" id="login-msg" aria-live="polite"></p>
+    </form>
+  </section>
+
+  <!-- Everything below is only shown once signed in -->
+  <div id="main-area" hidden>
+
+  <!-- ===================================================================
+       2. PAGE STRUCTURE (HTML)
+       Tabs: "Add reading", "History", "Trends". Each has a matching panel.
+       =================================================================== -->
+  <nav role="tablist" aria-label="Sections">
+    <button role="tab" id="tab-add"     aria-selected="true"  data-panel="panel-add">Add reading</button>
+    <button role="tab" id="tab-history" aria-selected="false" data-panel="panel-history">History</button>
+    <button role="tab" id="tab-trends"  aria-selected="false" data-panel="panel-trends">Trends</button>
+  </nav>
+
+  <!-- TAB 1: ADD A READING -->
+  <section class="panel active" id="panel-add" role="tabpanel" aria-labelledby="tab-add">
+    <h2>New reading</h2>
+    <!-- novalidate: we do our own friendlier checks in JavaScript -->
+    <form id="bp-form" novalidate>
+      <div class="row">
+        <div class="field">
+          <label for="sys">Top number <span class="hint">(systolic)</span></label>
+          <input class="big" id="sys" type="number" inputmode="numeric" placeholder="120">
+        </div>
+        <div class="field">
+          <label for="dia">Bottom number <span class="hint">(diastolic)</span></label>
+          <input class="big" id="dia" type="number" inputmode="numeric" placeholder="80">
+        </div>
+        <div class="field">
+          <label for="pulse">Pulse <span class="hint">(optional)</span></label>
+          <input class="big" id="pulse" type="number" inputmode="numeric" placeholder="70">
+        </div>
+      </div>
+      <div class="field">
+        <label for="when">Date and time</label>
+        <input id="when" type="datetime-local">
+      </div>
+      <div class="field">
+        <label for="note">Note <span class="hint">(optional, e.g. “after walking”)</span></label>
+        <textarea id="note" rows="2"></textarea>
+      </div>
+      <button class="primary" type="submit">Save reading</button>
+      <!-- aria-live makes screen readers announce the message when it changes -->
+      <p class="msg" id="form-msg" aria-live="polite"></p>
+    </form>
+  </section>
+
+  <!-- TAB 2: HISTORY -->
+  <section class="panel" id="panel-history" role="tabpanel" aria-labelledby="tab-history">
+    <h2>Past readings</h2>
+    <div class="stats" id="stats-history"></div>
+    <div class="scroll" id="history-list"></div>
+    <p class="noprint"><button class="small" id="print-btn" type="button">Print for doctor</button></p>
+  </section>
+
+  <!-- TAB 3: TRENDS -->
+  <section class="panel" id="panel-trends" role="tabpanel" aria-labelledby="tab-trends">
+    <h2>Trends</h2>
+    <div class="field noprint">
+      <label for="range">Show</label>
+      <select id="range">
+        <option value="30">Last 30 days</option>
+        <option value="90">Last 3 months</option>
+        <option value="0">Everything</option>
+      </select>
+    </div>
+    <div class="legend">
+      <span><b style="color:var(--sys)">● Top number</b></span>
+      <span><b style="color:var(--dia)">■ Bottom number</b></span>
+    </div>
+    <div id="chart"></div>
+  </section>
+
+  </div>
+
+  <footer class="screen">
+    Readings are saved securely online in your own account, so they appear on any device you sign in on. This diary is a record-keeping aid and is not medical advice.
+    Groupings follow common UK guidance: below 90/60 low, up to 120/80 healthy, up to 140/90 raised, above that high.
+  </footer>
+</div>
+
+<script>
+/* =====================================================================
+   3. JAVASCRIPT — the app's behaviour. Split into numbered parts.
+   ===================================================================== */
+
+/* ---------- PART A: TALKING TO THE PYTHON SERVER ----------
+   The page no longer contacts Supabase itself. It asks the Python server (app.py),
+   which signs people in and fetches their readings from Supabase.
+   Server addresses:  GET/POST /api/readings,  DELETE /api/readings/<id>,
+                      POST /api/login, /api/signup, /api/logout,  GET /api/me */
+
+// Send a request to the server and return its JSON reply. Throws an Error if the server says no.
+async function api(path, options) {
+  const res = await fetch(path, { headers: { "Content-Type": "application/json" }, ...options });
+  let data = {};
+  try { data = await res.json(); } catch (e) {}          // some replies have no body
+  if (!res.ok) {
+    const err = new Error(data.error || "Something went wrong. Please try again.");
+    err.status = res.status;                              // 401 means "not signed in"
+    throw err;
+  }
+  return data;
+}
+
+// The page's working copy of the data. Each reading: { id, time, sys, dia, pulse, note }
+let readings = [];
+
+// Download this person's readings
+async function loadReadings() {
+  const data = await api("/api/readings");
+  // The server sends the time as text like "2026-11-15T08:30:00"; turn it into a number we can sort and chart
+  return data.map(r => ({ id: r.id, time: new Date(r.time).getTime(), sys: r.sys, dia: r.dia, pulse: r.pulse, note: r.note }));
+}
+
+// Send one new reading to the server
+async function addReading(r) {
+  await api("/api/readings", { method: "POST",
+    body: JSON.stringify({ time: r.when, sys: r.sys, dia: r.dia, pulse: r.pulse, note: r.note }) });
+}
+
+// Ask the server to delete one reading
+async function removeReading(id) {
+  await api("/api/readings/" + id, { method: "DELETE" });
+}
+
+// Download the latest readings and redraw the History list and the chart
+async function refreshReadings() {
+  let failed = false;
+  try { readings = await loadReadings(); }
+  catch (e) {
+    if (e.status === 401) return showLogin();             // session ran out: back to the login card
+    failed = true;
+  }
+  renderHistory();
+  renderTrends();
+  if (failed) $("history-list").textContent = "Could not load readings. Please check your internet connection.";
+}
+
+
+/* ---------- PART B: SMALL HELPER FUNCTIONS ---------- */
+
+// Shortcut: find an element on the page by its id
+const $ = (id) => document.getElementById(id);
+
+// Format a timestamp (milliseconds) as e.g. "Tue 12 Nov 2026, 08:30"
+function formatTime(ms) {
+  return new Date(ms).toLocaleString("en-GB", {
+    weekday: "short", day: "numeric", month: "short", year: "numeric",
+    hour: "2-digit", minute: "2-digit"
+  });
+}
+
+// Format a short date for the chart axis, e.g. "12 Nov"
+function formatShort(ms) {
+  return new Date(ms).toLocaleDateString("en-GB", { day: "numeric", month: "short" });
+}
+
+// Turn "now" into the text format that a datetime-local input expects (local time, not UTC)
+function nowForInput() {
+  const d = new Date();
+  d.setMinutes(d.getMinutes() - d.getTimezoneOffset()); // shift so toISOString shows local time
+  return d.toISOString().slice(0, 16);                  // "YYYY-MM-DDTHH:MM"
+}
+
+// Average of a list of numbers, rounded. Returns "–" if the list is empty.
+function average(nums) {
+  if (!nums.length) return "–";
+  return Math.round(nums.reduce((a, b) => a + b, 0) / nums.length);
+}
+
+// Create an HTML element safely. Using textContent (not innerHTML) means anything typed
+// in a note can never be run as code.
+function make(tag, text, className) {
+  const el = document.createElement(tag);
+  if (text !== undefined) el.textContent = text;
+  if (className) el.className = className;
+  return el;
+}
+
+
+/* ---------- PART C: WORKING OUT THE CATEGORY ---------- */
+// Returns the label and style name for a reading. The higher of the two numbers decides.
+function categorise(sys, dia) {
+  if (sys > 140 || dia > 90)   return { label: "High",    cls: "high" };
+  if (sys > 120 || dia > 80)   return { label: "Raised",  cls: "raised" };
+  if (sys < 90  || dia < 60)   return { label: "Low",     cls: "low" };
+  return                              { label: "Healthy", cls: "ok" };
+}
+
+
+/* ---------- PART D: THE "ADD READING" FORM ---------- */
+const form = $("bp-form");
+const formMsg = $("form-msg");
+
+// Show a message under the form. `kind` is "error" or "good" (changes the colour).
+function showMsg(text, kind) {
+  formMsg.textContent = text;
+  formMsg.className = "msg " + kind;
+}
+
+// Runs when the Save button is pressed
+form.addEventListener("submit", async (event) => {   // async: we wait for the server
+  event.preventDefault();               // stop the browser reloading the page
+
+  // Read what was typed. Number() turns text into a number.
+  const sys = Number($("sys").value);
+  const dia = Number($("dia").value);
+  const pulseText = $("pulse").value;
+  const pulse = pulseText === "" ? null : Number(pulseText);
+  const time = new Date($("when").value).getTime();   // date text -> milliseconds
+  const note = $("note").value.trim();
+
+  // Check the numbers are sensible, and tell her clearly what to fix if not
+  if (!sys || !dia)                      return showMsg("Please enter both the top and bottom numbers.", "error");
+  if (sys < 50 || sys > 260)             return showMsg("The top number looks wrong. Please check it.", "error");
+  if (dia < 30 || dia > 160)             return showMsg("The bottom number looks wrong. Please check it.", "error");
+  if (dia >= sys)                        return showMsg("The top number should be bigger than the bottom number.", "error");
+  if (pulse !== null && (pulse < 30 || pulse > 220)) return showMsg("The pulse looks wrong. Please check it.", "error");
+  if (isNaN(time))                       return showMsg("Please choose a date and time.", "error");
+
+  // Upload the reading to Supabase and tell her whether it worked
+  try {
+    await addReading({ when: $("when").value, sys, dia, pulse, note });
+  } catch (e) {
+    if (e.status === 401) return showLogin();
+    return showMsg(e.message, "error");
+  }
+  showMsg("Saved: " + sys + "/" + dia + ". Well done!", "good");
+
+  // Clear the boxes ready for next time, then refresh the other tabs
+  $("sys").value = ""; $("dia").value = ""; $("pulse").value = ""; $("note").value = "";
+  $("when").value = nowForInput();
+  await refreshReadings();      // download the updated list and redraw
+});
+
+
+/* ---------- PART E: THE HISTORY TAB ---------- */
+
+// Fill the average boxes. They show a quick overview for the doctor.
+function renderStats(container, list) {
+  container.replaceChildren();          // empty the container first
+  if (!list.length) return;
+  const items = [
+    [average(list.map(r => r.sys)) + "/" + average(list.map(r => r.dia)), "Average"],
+    [list.length, "Readings"],
+    [Math.max(...list.map(r => r.sys)) + "/" + Math.max(...list.map(r => r.dia)), "Highest"],
+  ];
+  for (const [value, label] of items) {
+    const box = make("div", undefined, "stat");
+    box.append(make("b", String(value)), make("span", label));
+    container.append(box);
+  }
+}
+
+// Build the table of past readings, newest first
+function renderHistory() {
+  const box = $("history-list");
+  box.replaceChildren();
+  renderStats($("stats-history"), readings);
+
+  // No readings yet: show a friendly prompt instead of an empty table
+  if (!readings.length) {
+    box.append(make("p", "No readings yet. Use “Add reading” to record the first one.", "empty"));
+    return;
+  }
+
+  const table = make("table");
+  const head = table.createTHead().insertRow();
+  for (const name of ["When", "Reading", "Pulse", "Note", ""]) head.append(make("th", name));
+
+  const body = table.createTBody();
+  // [...readings] makes a copy so sorting doesn't change the original order
+  const newestFirst = [...readings].sort((a, b) => b.time - a.time);
+
+  for (const r of newestFirst) {
+    const row = body.insertRow();
+    const cat = categorise(r.sys, r.dia);
+
+    row.insertCell().textContent = formatTime(r.time);
+
+    const bpCell = row.insertCell();
+    bpCell.className = "bp";
+    bpCell.append(r.sys + "/" + r.dia + " ", make("span", cat.label, "tag " + cat.cls));
+
+    row.insertCell().textContent = r.pulse ?? "–";    // "–" if no pulse was entered
+    row.insertCell().textContent = r.note || "";
+
+    // Delete button (asks first, to avoid accidents)
+    const delCell = row.insertCell();
+    delCell.className = "noprint";
+    const del = make("button", "Delete", "small");
+    del.type = "button";
+    del.addEventListener("click", async () => {
+      if (confirm("Delete the reading from " + formatTime(r.time) + "?")) {
+        try { await removeReading(r.id); } catch (e) { alert("Could not delete. Please check your internet connection."); return; }
+        await refreshReadings();
+      }
+    });
+    delCell.append(del);
+  }
+  box.append(table);
+}
+
+
+/* ---------- PART F: THE TRENDS TAB (the chart) ---------- */
+const SVG_NS = "http://www.w3.org/2000/svg";   // SVG elements need this special namespace
+
+// Helper to create an SVG element with attributes, e.g. svg("line", {x1: 0, y1: 0})
+function svg(tag, attrs, text) {
+  const el = document.createElementNS(SVG_NS, tag);
+  for (const k in attrs) el.setAttribute(k, attrs[k]);
+  if (text !== undefined) el.textContent = text;
+  return el;
+}
+
+function renderTrends() {
+  const box = $("chart");
+  box.replaceChildren();
+
+  // Work out which readings fall inside the chosen time range
+  const days = Number($("range").value);               // 0 means everything
+  const cutoff = days ? Date.now() - days * 86400000 : 0; // 86,400,000 ms in a day
+  const list = readings.filter(r => r.time >= cutoff).sort((a, b) => a.time - b.time); // oldest first
+
+  if (list.length < 2) {
+    box.append(make("p", "Add at least two readings in this period to see a trend.", "empty"));
+    return;
+  }
+
+  // Chart size and margins. Everything is drawn inside a 640 x 320 box that scales to fit the screen.
+  const W = 640, H = 320, L = 48, R = 16, T = 16, B = 40;
+  const chart = svg("svg", { viewBox: `0 0 ${W} ${H}`, class: "chart-svg", role: "img",
+    "aria-label": "Line chart of blood pressure readings over time" });
+
+  // Vertical scale: from just below the lowest value to just above the highest
+  const allValues = list.flatMap(r => [r.sys, r.dia]);
+  const lo = Math.floor((Math.min(...allValues) - 10) / 10) * 10;
+  const hi = Math.ceil((Math.max(...allValues) + 10) / 10) * 10;
+
+  // Conversion functions: turn a reading's time/value into x/y pixel positions
+  const tMin = list[0].time, tMax = list[list.length - 1].time;
+  const x = (t) => L + ((t - tMin) / (tMax - tMin || 1)) * (W - L - R);
+  const y = (v) => T + (1 - (v - lo) / (hi - lo)) * (H - T - B);
+
+  // Horizontal grid lines with number labels down the left
+  const step = (hi - lo) > 80 ? 20 : 10;
+  for (let v = lo; v <= hi; v += step) {
+    chart.append(svg("line", { x1: L, x2: W - R, y1: y(v), y2: y(v), stroke: "var(--line)", "stroke-width": 1 }));
+    chart.append(svg("text", { x: L - 8, y: y(v) + 5, "text-anchor": "end", fill: "var(--muted)", "font-size": 14 }, v));
+  }
+
+  // Date labels along the bottom (first, middle, last)
+  for (const r of [list[0], list[Math.floor(list.length / 2)], list[list.length - 1]]) {
+    chart.append(svg("text", { x: x(r.time), y: H - 12, "text-anchor": "middle", fill: "var(--muted)", "font-size": 14 }, formatShort(r.time)));
+  }
+
+  // Draw one line per measurement. `shape` makes the points differ by shape as well as colour.
+  function drawSeries(key, colour, shape) {
+    // Join all points into one "path" line: M = move to first point, L = line to the next
+    const d = list.map((r, i) => (i ? "L" : "M") + x(r.time).toFixed(1) + " " + y(r[key]).toFixed(1)).join(" ");
+    chart.append(svg("path", { d, fill: "none", stroke: colour, "stroke-width": 3 }));
+    for (const r of list) {
+      const cx = x(r.time), cy = y(r[key]);
+      chart.append(shape === "circle"
+        ? svg("circle", { cx, cy, r: 5, fill: colour })
+        : svg("rect", { x: cx - 5, y: cy - 5, width: 10, height: 10, fill: colour }));
+    }
+  }
+  drawSeries("sys", "var(--sys)", "circle");
+  drawSeries("dia", "var(--dia)", "square");
+
+  box.append(chart);
+
+  // Summary under the chart for the chosen period
+  const stats = make("div", undefined, "stats");
+  renderStats(stats, list);
+  box.append(stats);
+}
+
+
+/* ---------- PART G: TABS AND PRINT BUTTON ---------- */
+const tabs = document.querySelectorAll("nav button");
+const panels = document.querySelectorAll(".panel");
+
+// Show one panel, hide the others, and mark the matching tab as selected
+function showPanel(panelId) {
+  panels.forEach(p => p.classList.toggle("active", p.id === panelId));
+  tabs.forEach(t => t.setAttribute("aria-selected", String(t.dataset.panel === panelId)));
+}
+tabs.forEach(t => t.addEventListener("click", () => showPanel(t.dataset.panel)));
+
+// Redraw the chart when the time range changes
+$("range").addEventListener("change", renderTrends);
+
+// Print: mark History and Trends as printable, open the print dialog, then undo
+$("print-btn").addEventListener("click", () => {
+  $("panel-history").classList.add("printable");
+  $("panel-trends").classList.add("printable");
+  window.print();
+  $("panel-history").classList.remove("printable");
+  $("panel-trends").classList.remove("printable");
+});
+// Make sure the Trends chart is visible to the printer even though its tab isn't open
+window.addEventListener("beforeprint", renderTrends);
+
+
+/* ---------- PART H: START-UP ---------- */
+// When the page first opens: set the date box to "now" and draw the existing data.
+
+/* ---------- PART I: SIGNING IN AND OUT (through the Python server) ---------- */
+function showLogin() {
+  $("login").hidden = false; $("main-area").hidden = true; $("signout").hidden = true;
+}
+async function showApp() {
+  $("login").hidden = true; $("main-area").hidden = false; $("signout").hidden = false;
+  $("when").value = nowForInput();
+  await refreshReadings();
+}
+function loginMsg(text, kind) { $("login-msg").textContent = text; $("login-msg").className = "msg " + kind; }
+
+// Sign in (also runs when Enter is pressed in the password box)
+$("login-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  try {
+    await api("/api/login", { method: "POST",
+      body: JSON.stringify({ email: $("email").value.trim(), password: $("password").value }) });
+  } catch (e) { return loginMsg(e.message, "error"); }
+  $("password").value = "";
+  showApp();
+});
+
+// Create a new account. Supabase may email a confirmation link first.
+$("signup-btn").addEventListener("click", async () => {
+  try {
+    const data = await api("/api/signup", { method: "POST",
+      body: JSON.stringify({ email: $("email").value.trim(), password: $("password").value }) });
+    if (data.signedIn) showApp();
+    else loginMsg("Account created. Click the link in the email we sent, then come back and press Sign in.", "good");
+  } catch (e) { loginMsg(e.message, "error"); }
+});
+
+// Sign out and go back to the login card
+$("signout").addEventListener("click", async () => {
+  try { await api("/api/logout", { method: "POST" }); } catch (e) {}
+  readings = [];
+  showLogin();
+});
+
+/* ---------- PART H: START-UP ----------
+   Ask the server whether this browser is already signed in (the cookie remembers her). */
+(async () => {
+  try {
+    const me = await api("/api/me");
+    if (me.signedIn) showApp(); else showLogin();
+  } catch (e) {
+    showLogin();
+    loginMsg(e.message, "error");
+  }
+})();
+</script>
+</body>
+</html>
