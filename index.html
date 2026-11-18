@@ -162,8 +162,6 @@ button.secondary {
   <!-- LOGIN CARD: shown when nobody is signed in -->
   <section class="card" id="login" hidden>
     <h2>Sign in or create an account</h2>
-    <p style="margin:0 0 16px"><b>Already have an account?</b> Type your email and password, then press <b>Sign in</b>.<br>
-    <b>First time?</b> Type the email and password you want to use, then press <b>Create a new account</b>.</p>
     <form id="login-form" novalidate>
       <div class="field"><label for="email">Email</label>
         <input id="email" type="email" autocomplete="email" inputmode="email"></div>
@@ -171,6 +169,7 @@ button.secondary {
         <input id="password" type="password" autocomplete="current-password"></div>
       <button class="primary" type="submit">Sign in</button>
       <button class="secondary" type="button" id="signup-btn">Create a new account</button>
+           <p style="margin:0 0 16px"><b> To create an account type your email and password, then press <b>Create a new account</b>.<br>
       <p class="msg" id="login-msg" aria-live="polite"></p>
     </form>
   </section>
