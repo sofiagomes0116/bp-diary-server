@@ -400,7 +400,7 @@ form.addEventListener("submit", async (event) => {   // async: we wait for the s
     if (e.status === 401) return showLogin();
     return showMsg(e.message, "error");
   }
-  showMsg("Saved: " + sys + "/" + dia + ". Saved!", "good");
+  showMsg("Saved: " + sys + "/" + dia + ".", "good");
 
   // Clear the boxes ready for next time, then refresh the other tabs
   $("sys").value = ""; $("dia").value = ""; $("pulse").value = ""; $("note").value = "";
