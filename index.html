@@ -170,10 +170,33 @@ button.secondary {
       <button class="primary" type="submit">Sign in</button>
       <button class="secondary" type="button" id="signup-btn">Create a new account</button>
       <p style="margin:16px 0 16px">To create an account type your email and password, then press <b>Create a new account</b>.</p>
+      <button class="small" type="button" id="forgot-link" style="margin-top:16px">Forgot your password?</button>
       <p class="msg" id="login-msg" aria-live="polite"></p>
     </form>
   </section>
 
+   <!-- FORGOT PASSWORD CARD: asks for an email and sends a reset link -->
+  <section class="card" id="forgot" hidden>
+    <h2>Forgot your password?</h2>
+    <p>Type your email and press the button. We will email you a link to choose a new password.</p>
+    <div class="field"><label for="forgot-email">Email</label>
+      <input id="forgot-email" type="email" autocomplete="email" inputmode="email"></div>
+    <button class="primary" type="button" id="forgot-send">Send reset link</button>
+    <button class="secondary" type="button" id="forgot-back">Back to sign in</button>
+    <p class="msg" id="forgot-msg" aria-live="polite"></p>
+  </section>
+
+  <!-- NEW PASSWORD CARD: shown when she opens the link from the email -->
+  <section class="card" id="reset" hidden>
+    <h2>Choose a new password</h2>
+    <div class="field"><label for="new-password">New password <span class="hint">(at least 6 characters)</span></label>
+      <input id="new-password" type="password" autocomplete="new-password"></div>
+    <div class="field"><label for="new-password2">Type it again</label>
+      <input id="new-password2" type="password" autocomplete="new-password"></div>
+    <button class="primary" type="button" id="reset-save">Save new password</button>
+    <p class="msg" id="reset-msg" aria-live="polite"></p>
+  </section>
+   
   <!-- Everything below is only shown once signed in -->
   <div id="main-area" hidden>
 
@@ -582,6 +605,67 @@ window.addEventListener("beforeprint", renderTrends);
 /* ---------- PART H: START-UP ---------- */
 // When the page first opens: set the date box to "now" and draw the existing data.
 
+   /* ---------- PART J: FORGOT PASSWORD ----------
+   Flow: she asks for a link -> Supabase emails it -> the link opens this page with a one-time
+   token after the # in the address -> she types a new password -> the server saves it. */
+let resetToken = null;                        // the one-time token from the emailed link
+
+// Show one of the three cards: "login", "forgot" or "reset"
+function showCard(name) {
+  for (const id of ["login", "forgot", "reset"]) $(id).hidden = (id !== name);
+}
+function forgotMsg(text, kind) { $("forgot-msg").textContent = text; $("forgot-msg").className = "msg " + kind; }
+function resetMsg(text, kind) { $("reset-msg").textContent = text; $("reset-msg").className = "msg " + kind; }
+
+// Runs at start-up: did she arrive by clicking the link in the email? Returns true if so.
+function handleRecoveryLink() {
+  const params = new URLSearchParams(location.hash.slice(1));   // the part of the address after the #
+  if (params.get("type") === "recovery" && params.get("access_token")) {
+    resetToken = params.get("access_token");
+    history.replaceState(null, "", location.pathname);          // remove the token from the address bar
+    showCard("reset");
+    return true;
+  }
+  if (params.get("error")) {                                    // the link was old or already used
+    history.replaceState(null, "", location.pathname);
+    showLogin();
+    showCard("forgot");
+    forgotMsg("That link has expired or was already used. Type your email to get a new one.", "error");
+    return true;
+  }
+  return false;
+}
+
+// "Forgot your password?" button on the sign-in card
+$("forgot-link").addEventListener("click", () => {
+  $("forgot-email").value = $("email").value;                   // copy over the email she already typed
+  forgotMsg("", "good");
+  showCard("forgot");
+});
+$("forgot-back").addEventListener("click", () => showCard("login"));
+
+// "Send reset link" button
+$("forgot-send").addEventListener("click", async () => {
+  try {
+    await api("/api/forgot-password", { method: "POST", body: JSON.stringify({ email: $("forgot-email").value.trim() }) });
+    forgotMsg("If that email has an account, we have sent a link. Open the email and click the link.", "good");
+  } catch (e) { forgotMsg(e.message, "error"); }
+});
+
+// "Save new password" button
+$("reset-save").addEventListener("click", async () => {
+  const p1 = $("new-password").value, p2 = $("new-password2").value;
+  if (p1.length < 6) return resetMsg("Please use at least 6 characters.", "error");
+  if (p1 !== p2) return resetMsg("The two passwords do not match.", "error");
+  try {
+    await api("/api/reset-password", { method: "POST", body: JSON.stringify({ access_token: resetToken, password: p1 }) });
+  } catch (e) { return resetMsg(e.message, "error"); }
+  resetToken = null;
+  $("new-password").value = ""; $("new-password2").value = "";
+  showCard("login");
+  loginMsg("Password changed. Please sign in with your new password.", "good");
+});
+   
 /* ---------- PART I: SIGNING IN AND OUT (through the Python server) ---------- */
 function showLogin() {
   $("login").hidden = false; $("main-area").hidden = true; $("signout").hidden = true;
@@ -626,6 +710,7 @@ $("signout").addEventListener("click", async () => {
 (async () => {
   try {
     const me = await api("/api/me");
+    if (handleRecoveryLink()) return;      // she came from a reset email: show the new-password card
     if (me.signedIn) showApp(); else showLogin();
   } catch (e) {
     showLogin();
