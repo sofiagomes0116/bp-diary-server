@@ -205,7 +205,10 @@ def signup():
     except requests.RequestException:
         return error("Could not reach the sign-in service. Please try again.", 503)
     if r.status_code not in (200, 201):
-        return error("Could not create the account: " + supabase_message(r, "please check the details."), 400)
+        reason = supabase_message(r, "please check the details.")
+        if "password" in reason.lower():                   # swap Supabase's wording for something friendlier
+            reason = "please type a password with at least 6 characters."
+        return error("Could not create the account: " + reason, 400)
     result = r.json()
     if result.get("access_token"):                        # confirmation emails are off: signed in straight away
         store_session(result)
@@ -216,6 +219,43 @@ def signup():
 @app.post("/api/logout")
 def logout():
     session.clear()
+    return jsonify({"ok": True})
+
+
+@app.post("/api/forgot-password")
+def forgot_password():
+    """Ask Supabase to email a password-reset link. We always reply 'ok', so nobody can use
+    this form to find out which email addresses have accounts."""
+    email = str((request.get_json(silent=True) or {}).get("email", "")).strip()
+    if "@" not in email:
+        return error("Please type your email address.", 400)
+    try:
+        r = requests.post(f"{SUPABASE_URL}/auth/v1/recover", json={"email": email},
+                          headers=auth_headers(), timeout=TIMEOUT)
+    except requests.RequestException:
+        return error("Could not reach the sign-in service. Please try again.", 503)
+    if r.status_code == 429:                              # Supabase limits how many emails can be sent
+        return error("Too many requests. Please wait a few minutes and try again.", 429)
+    return jsonify({"ok": True})
+
+
+@app.post("/api/reset-password")
+def reset_password():
+    """Set a new password. The page sends the one-time token from the emailed link plus the new password."""
+    data = request.get_json(silent=True) or {}
+    token, password = data.get("access_token", ""), data.get("password", "")
+    if not token:
+        return error("This reset link is not valid. Please ask for a new one.", 400)
+    if len(password) < 6:
+        return error("Please use at least 6 characters.", 400)
+    try:
+        r = requests.put(f"{SUPABASE_URL}/auth/v1/user", json={"password": password},
+                         headers=auth_headers(token), timeout=TIMEOUT)    # the token proves who is asking
+    except requests.RequestException:
+        return error("Could not reach the sign-in service. Please try again.", 503)
+    if r.status_code != 200:
+        return error("Could not change the password: "
+                     + supabase_message(r, "the link may have expired. Please ask for a new one."), 400)
     return jsonify({"ok": True})
 
 
